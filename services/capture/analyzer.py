@@ -21,7 +21,7 @@ class Result(BaseModel):
 
 
 def analyze_stream(image_path: str | Path) -> Literal["good", "bad", "ad"]:
-    print(f"Analyzing screenshot at path: {image_path}")
+    logger.info(f"Analyzing screenshot at path: {image_path}")
     path = Path(image_path)
 
     client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])

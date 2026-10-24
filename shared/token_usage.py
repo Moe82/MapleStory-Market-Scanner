@@ -1,4 +1,4 @@
-from shared.logging.logger import logger
+from shared.logging import logger
 
 
 def log_token_usage(usage):
