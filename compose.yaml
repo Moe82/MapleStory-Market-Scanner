@@ -1,0 +1,91 @@
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: maplestory
+      POSTGRES_USER: scanner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scanner -d maplestory"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  processor:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: services/processor/Dockerfile
+    env_file:
+      - .env
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: maplestory
+      PGUSER: scanner
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      SERVICE_NAME: Processor
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - maplestory_ocr_models:/root/.paddlex
+      - ./screenshots:/app/screenshots
+
+  capture:
+    build:
+      context: .
+      dockerfile: services/capture/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SERVICE_NAME: Capture
+    volumes:
+      - ./screenshots:/app/screenshots
+
+  analyzer:
+    build:
+      context: .
+      dockerfile: services/analyzer/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: maplestory
+      PGUSER: scanner
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      SERVICE_NAME: Analyzer
+    depends_on:
+      db:
+        condition: service_healthy
+
+  resolver:
+    build:
+      context: .
+      dockerfile: services/resolver/Dockerfile
+    env_file:
+      - .env
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: maplestory
+      PGUSER: scanner
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      SERVICE_NAME: Resolver
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  maplestory_ocr_models:

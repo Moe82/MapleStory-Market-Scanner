@@ -1,0 +1,39 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Screenshots
+screenshots/
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Local OCR model caches
+.paddlex/
+.paddleocr/
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
