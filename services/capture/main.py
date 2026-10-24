@@ -14,7 +14,7 @@ import numpy as np
 
 from stream_discovery import discover_streams
 from analyzer import analyze_stream
-from shared.logging.logger import logger
+from shared.logging import logger
 
 
 
