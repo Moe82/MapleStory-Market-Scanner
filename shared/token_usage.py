@@ -1,8 +1,13 @@
+import os
+
 from shared.logging import logger
 
 
 def log_token_usage(usage):
     """Log input, output, and total tokens consumed by a Gemini request."""
+    if os.getenv("LOG_TOKEN_USAGE", "true").lower() != "true":
+        return
+
     logger.info("_______________________________________")
     logger.info(f"Input tokens: {usage.prompt_token_count}")
     logger.info(f"Output tokens: {usage.candidates_token_count}")
