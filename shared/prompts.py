@@ -1,55 +1,110 @@
 STREAM_VALIDATION_PROMPT = """
-Analyze this screenshot from a Twitch stream.
+Analyze this Twitch screenshot and return a status with a brief reason.
 
-Return one status and a short reason explaining your decision.
+1. Advertisement
 
-First, identify whether a Twitch video advertisement is currently interrupting the stream.
+Return "ad" if a video advertisement is interrupting gameplay.
+Ignore streamer overlays, webcams, and in-game advertisements.
+
+2. Game
+
+The primary gameplay must be classic/old-school MapleStory, including
+pre-Big-Bang, Classic World, or classic-style private servers.
+
+Use visual clues such as maps, monsters, characters, skills, and game UI.
+Return "bad" if the game is modern MapleStory, another game, or uncertain.
+
+3. Chat window
+
+Evaluate ONLY the chat window in the primary (largest) gameplay view.
+Ignore Twitch chat and smaller picture-in-picture gameplay views.
+
+The chat window is horizontally centered near the bottom of the gameplay,
+above the player's level, HP, and MP display.
+
+A valid chat window must:
+- Be expanded into a rectangular message-history panel.
+- Have enough visible vertical space for at least 4 text rows.
+- Have clearly visible top and bottom boundaries.
+- Be completely unobstructed by overlays, webcams, or other graphics.
+
+A minimized chat window appears as a thin horizontal bar, sometimes
+containing one readable message. This is NOT an expanded chat window.
+
+Only count rows within the actual visible chat-history panel.
+Do not count the input field, surrounding game space, or hidden rows.
+Empty rows may count if their space is clearly visible inside the panel.
+
+4. Player usernames
+
+A MapleStory chat message generally follows this format:
+
+[Optional timestamp] PlayerName [Optional channel badge] : MessageText
+
+Example:
+[16:52] noran CH21 [ear icon] : B> Silver Guardian att+34
+
+- The timestamp is optional.
+- The PLAYER USERNAME appears at the beginning, after any timestamp.
+- Colored messages (pink, cyan, yellow, or blue) may include a channel
+  badge such as CH21 and a small ear icon after the username.
+- Everything after the colon is message content, not the username.
+- Item names such as [Blue Lutia] are NOT usernames.
+- A message may wrap onto multiple text rows.
+
+IMPORTANT:
+- Inspect the LEFT SIDE of the chat window, where usernames appear.
+- The FULL username must be visible and readable for every visible message.
+- If an overlay covers the beginning of a message, its username is OBSTRUCTED.
+- If you cannot identify a username, mark it UNREADABLE.
+- Never guess usernames from item names or message text.
+- Empty chat rows do not require usernames.
+
+5. Final decision
+
+Return exactly one status:
 
 "ad":
-- A video advertisement is replacing or blocking the actual gameplay.
-- Ignore advertisements outside the video player.
-- Ignore streamer overlays, webcams, and in-game advertisements.
-- If a video ad is interrupting the stream, return "ad" regardless of the underlying game.
-
-Next, determine whether the visible game is classic/old-school MapleStory or something else.
+- A video advertisement is interrupting gameplay.
 
 "good":
-- The game is classic/old-school MapleStory, including pre-Big-Bang,
-  Classic World, and classic-style private servers.
-- The in-game chat window is currently expanded enough to show at least 4 text rows.
+- The game is classic MapleStory.
+- The primary chat window is expanded with capacity for at least 4 rows.
+- The entire chat window is visible and unobstructed.
+- ALL visible messages have fully readable player usernames.
 
 "bad":
-- The game is not MapleStory.
-- The game is modern/current MapleStory rather than classic MapleStory.
-- The in-game chat window is too small.
-- The chat window is minimized.
-- The game or chat window cannot be identified confidently.
+- ANY requirement for "good" is not satisfied.
+- ANY username is OBSTRUCTED or UNREADABLE.
+- The chat window is minimized, partially covered, or too small.
+- You are uncertain about the game, chat window, or username visibility.
 
-Important chat-window instructions:
-- The chat window is the rectangular message-history box directly above the text input field.
-- The text input field is directly above the player's level, name, HP, and MP area at the bottom of the screen.
-- Only evaluate that message-history box when counting chat rows.
-- Do not count the text input field itself.
-- Do not count tabs such as "All".
-- Do not count Twitch chat, streamer overlays, webcam areas, nameplates, or any other interface text.
-- The chat window can range from minimized up to about 10 visible rows.
-- If the chat window is minimized so that it effectively collapses into or replaces the text input field, that is a BAD result.
-- Count how many text rows can fit inside the chat window's CURRENT visible boundaries.
-- Count visible row capacity, including empty rows, only if there is clearly enough visible vertical space for those rows.
-- Do not assume hidden rows above the visible window.
-- If fewer than 4 rows clearly fit, return "bad".
-- If you are unsure whether 4 rows fit, return "bad".
+Before returning "good", verify that every visible message has a readable
+username. If even ONE username is OBSTRUCTED or UNREADABLE, return "bad".
 
-Important MapleStory instructions:
-- Distinguish classic from modern MapleStory using multiple visual clues:
-  character classes, maps, monsters, skill interfaces, damage numbers,
-  and game UI.
-- Do not rely on a single visual clue.
-- If you cannot confidently tell whether it is classic MapleStory, return "bad".
+In your reason, report:
+- Whether the chat window is expanded or minimized.
+- The number of visible rows or row capacity.
+- Whether any overlay obstructs the chat.
+- Every player username, from top to bottom, using OBSTRUCTED or UNREADABLE
+  where appropriate.
 
-Return the status and a brief factual reason.
-For chat-size decisions, explicitly state how many chat rows are visible or can clearly fit in the current chat window.
+Do not invent usernames or confuse item names with player names.
+
+Set usernames_readable to false if any visible message has an
+obstructed, missing, or unreadable player username.
 """
+
+
+
+
+
+
+
+
+
+
+
 
 
 LISTING_ANALYSIS_PROMPT = """
@@ -62,6 +117,13 @@ screenshots using OCR.
 Your task is to interpret each message as an experienced MapleStory
 player would, correct OCR errors, recognize item abbreviations,
 identify trades, and produce structured market data.
+
+Extract the player's username for every listing.
+The username appears at the beginning of the message, after an optional
+timestamp and before the optional CH channel badge.
+Use the same username for all listings extracted from one message.
+If the username cannot be determined, return null.
+Do not confuse item names or channel badges with usernames.
 
 GAME CONTEXT:
 - The game is MapleStory Classic World, not modern MapleStory.

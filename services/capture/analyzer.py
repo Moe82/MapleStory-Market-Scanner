@@ -18,7 +18,7 @@ MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 class Result(BaseModel):
     status: Literal["good", "bad", "ad"]
     reason: str
-
+    usernames_readable: bool
 
 def analyze_stream(image_path: str | Path) -> Literal["good", "bad", "ad"]:
     logger.info(f"Analyzing screenshot at path: {image_path}")
@@ -46,6 +46,13 @@ def analyze_stream(image_path: str | Path) -> Literal["good", "bad", "ad"]:
     log_token_usage(response.usage_metadata)
 
     result = response.parsed
+
     logger.info(f"Result: {result.status}")
     logger.info(f"Reason: {result.reason}")
+    
+
+    if result.status == "good" and not result.usernames_readable:
+        logger.warning("Gemini return incorrect status. Updating status to 'bad'")
+        result.status = "bad"
+
     return result.status
