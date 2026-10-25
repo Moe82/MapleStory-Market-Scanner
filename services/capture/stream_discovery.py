@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 
 CLIENT_ID = os.environ["TWITCH_CLIENT_ID"]
 CLIENT_SECRET = os.environ["TWITCH_CLIENT_SECRET"]
+BLACKLIST = {channel.strip().lower() for channel in os.getenv("TWITCH_CHANNEL_BLACKLIST", "").split(",") if channel.strip()}
 
 
 def get_access_token():
@@ -49,6 +50,13 @@ def discover_streams():
     }, token)
 
     channels = []
+
+    # filter out streamers with problematic stream setups
+    for stream in result["data"]:
+        if stream["user_login"].lower() in BLACKLIST:
+            continue
+
+        channels.append(stream["user_login"])
 
     for stream in result["data"]:
         channels.append(stream["user_login"])
