@@ -141,9 +141,10 @@ def find_bands(frame):
                 continue
 
             padding_x = 4
+            padding_left = 150
             padding_y = 3
 
-            left = max(0, x1 + rx - padding_x)
+            left = max(0, x1 + rx - padding_left)
             top = max(0, y1 + ry - padding_y)
             right = min(width, x1 + rx + rw + padding_x)
             bottom = min(height, y1 + ry + rh + padding_y)
