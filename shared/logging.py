@@ -9,6 +9,7 @@ SERVICE_NAME = os.getenv("SERVICE_NAME", "maplestory")
 
 logger = logging.getLogger(SERVICE_NAME)
 logger.setLevel(logging.INFO)
+logger.propagate = False # prevent duplicate logs from being printed by the base logger.
 
 handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(
