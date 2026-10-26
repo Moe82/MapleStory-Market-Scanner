@@ -1,4 +1,6 @@
+
 import os
+import re
 import signal
 import subprocess
 import tempfile
@@ -12,22 +14,16 @@ from shared.logging import logger
 from capture import capture
 
 
+INTERVAL = int(os.getenv("CAPTURE_INTERVAL", "5"))
 SCREENSHOTS_DIR = Path("/app/screenshots")
 PENDING_EXTRACTION_DIR = SCREENSHOTS_DIR / "pending_extraction"
 ORIGINAL_SCREENSHOT_DIR = SCREENSHOTS_DIR / "original"
 PROCESSED_SCREENSHOT_DIR = SCREENSHOTS_DIR / "processed"
 NO_TEXT_DETECTED_SCREENSHOT_DIR = SCREENSHOTS_DIR / "no_text_detected"
-
 RETRY_DELAY = 15
-
-# TEST MODE: 0 disables rotation testing.
-TEST_STREAM_ROTATION_SECONDS = int(
-    os.getenv("TEST_STREAM_ROTATION_SECONDS", "30")
-)
 
 stop_event = threading.Event()
 active_processes = []
-
 
 def stop(signum, frame):
     stop_event.set()
@@ -36,23 +32,22 @@ def stop(signum, frame):
         if process.poll() is None:
             process.terminate()
 
-
+# ensure that streamlink and FFmpeg process exit cleanly
 signal.signal(signal.SIGTERM, stop)
 signal.signal(signal.SIGINT, stop)
+
 
 
 class StreamManager:
     def __init__(self, validation_interval=300):
         self.channels = discover_streams()
         self.current_index = 0
-        self.validation_interval = int(
-            os.getenv("STREAM_VALIDATION_INTERVAL", "300")
-        )
+        self.validation_interval = int(os.environ["STREAM_VALIDATION_INTERVAL"])
         self.stop_event = threading.Event()
         self.channel_started_at = time.time()
         self.last_analyzed_image = None
         self.missing_screenshots = 0
-        self.last_cleanup = 0
+        self.last_cleanup = 0 # setting to zero so that file cleanup runs once on startup
         self.last_channels_refreash = time.time()
 
     @property
@@ -67,7 +62,7 @@ class StreamManager:
         image_path = max(
             ORIGINAL_SCREENSHOT_DIR.glob(f"{self.current_channel}_*.png"),
             key=os.path.getmtime,
-            default=None,
+            default=None
         )
 
         if image_path is None:
@@ -92,13 +87,9 @@ class StreamManager:
         return result
 
     def next_channel(self):
-        if not self.channels:
-            return
-
         self.current_index = (self.current_index + 1) % len(self.channels)
         self.channel_started_at = time.time()
         self.last_analyzed_image = None
-
         logger.info(f"Switching to stream: {self.current_channel}")
 
     def refresh_channel_list(self):
@@ -116,35 +107,19 @@ class StreamManager:
                 self.channel_started_at = time.time()
                 self.last_analyzed_image = None
                 self.missing_screenshots = 0
-
-            logger.info(
-                f"Refreshed channels list: {len(self.channels)} total"
-            )
+            logger.info(f"Refreshed channels list: {len(self.channels)} total")
 
     def run(self):
-
-        # TEST MODE: rotate streams at a fixed interval.
-        if TEST_STREAM_ROTATION_SECONDS > 0:
-            logger.info(
-                f"Test mode enabled: switching streams every "
-                f"{TEST_STREAM_ROTATION_SECONDS} seconds"
-            )
-
-            while not self.stop_event.wait(TEST_STREAM_ROTATION_SECONDS):
-                if len(self.channels) > 1:
-                    self.next_channel()
-
-            return
-
-        # Normal stream validation behavior.
-        self.stop_event.wait(60)
+        self.stop_event.wait(60) # give the initial run some time to gather screenshots
 
         while not self.stop_event.is_set():
             try:
+                # delete old files once every hour
                 if time.time() - self.last_cleanup >= 3600:
                     cleanup_old_screenshots()
                     self.last_cleanup = time.time()
 
+                # refreash channel list every 3 hours
                 if time.time() - self.last_channels_refreash >= 10800:
                     self.refresh_channel_list()
 
@@ -165,9 +140,7 @@ class StreamManager:
 
                 elif result is None:
                     self.missing_screenshots += 1
-                    logger.warning(
-                        f"No fresh screenshot ({self.missing_screenshots}/3)"
-                    )
+                    logger.warning(f"No fresh screenshot ({self.missing_screenshots}/3)")
 
                     if self.missing_screenshots >= 3:
                         self.next_channel()
@@ -196,9 +169,7 @@ class StreamManager:
 
 def cleanup_old_screenshots():
     logger.info("Deleting old screenshots.")
-
-    cutoff = time.time() - 86400
-
+    cutoff = time.time() - 86400  # 24 hours
     for folder in [
         ORIGINAL_SCREENSHOT_DIR,
         PENDING_EXTRACTION_DIR,
@@ -209,12 +180,12 @@ def cleanup_old_screenshots():
             if file.stat().st_mtime < cutoff:
                 file.unlink()
 
-
 def create_screenshot_directories():
+    # recreating directories as git ignores empty folders
     PENDING_EXTRACTION_DIR.mkdir(parents=True, exist_ok=True)
-    ORIGINAL_SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    NO_TEXT_DETECTED_SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
-    PROCESSED_SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    ORIGINAL_SCREENSHOT_DIR.mkdir(parents=True,exist_ok=True)
+    NO_TEXT_DETECTED_SCREENSHOT_DIR.mkdir(parents=True,exist_ok=True)
+    PROCESSED_SCREENSHOT_DIR.mkdir(parents=True,exist_ok=True)
 
 
 def main():
@@ -222,51 +193,31 @@ def main():
     create_screenshot_directories()
 
     stream_manager = StreamManager()
-
-    if not stream_manager.channels:
-        logger.error("No streams available")
-        return
-
-    logger.info(f"Found {len(stream_manager.channels)} streams")
-
     stream_manager.start()
 
     with tempfile.TemporaryDirectory(prefix="twitch_frames_") as folder:
         frame_folder = Path(folder)
-
         while not stop_event.is_set():
             try:
-                channel_before_capture = stream_manager.current_channel
-
-                offline_channel = capture(
-                    frame_folder,
-                    stream_manager,
-                    subprocess,
-                    active_processes,
-                    stop_event,
-                )
-
-                # The manager switched channels while capture was running.
-                # Start capturing the new channel immediately.
-                if stream_manager.current_channel != channel_before_capture:
-                    continue
+                # returns channel name if its offline
+                offline_channel = capture(frame_folder, stream_manager, subprocess, active_processes, stop_event)
 
                 if (
-                    offline_channel
-                    and stream_manager.current_channel == offline_channel
-                    and len(stream_manager.channels) > 1
-                ):
-                    stream_manager.next_channel()
-                    stop_event.wait(3)
-                    continue
-
+                        offline_channel and 
+                        stream_manager.current_channel == offline_channel and 
+                        len(stream_manager.channels) > 1
+                    ):
+                        stream_manager.next_channel()
+                        stop_event.wait(3)
+                        continue
+                
             except Exception as error:
                 logger.error(f"Capture error: {error}")
 
             if not stop_event.is_set():
                 logger.info(f"Retrying in {RETRY_DELAY}s")
                 stop_event.wait(RETRY_DELAY)
-
+    
     stream_manager.stop()
     logger.info("Capture Service Stopped")
 
