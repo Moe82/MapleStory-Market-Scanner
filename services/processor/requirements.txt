@@ -1,0 +1,5 @@
+paddleocr==3.7.0
+google-genai
+pydantic
+rapidfuzz
+psycopg[binary]
