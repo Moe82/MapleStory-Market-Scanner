@@ -8,6 +8,7 @@ from rank_bm25 import BM25Okapi
 from database.accessors.items import get_all_items
 from database.accessors.item_listings import get_analyzed_listings, update_listing, mark_listing_unresolved
 from gemini_resolver import resolve_with_gemini
+from shared.logging import logger
 
 BATCH_SIZE = 10
 
@@ -21,7 +22,7 @@ class ItemResolver:
 
     
     def find_candidates(self, item: str, limit: int = 10) -> list[dict]:
-        """Find catalog items whose names most closely match an (AI analyzed) item name."""
+        """Find catalog items whose names most closely match an (AI analyzed) item name"""
 
         # find the closest matches
         query_tokens = set(re.findall(r"[a-z]+", item.lower()))
@@ -47,7 +48,16 @@ class ItemResolver:
 
 
     def process_queue(self):
-        results = resolve_with_gemini(self.queue)
+        try:
+            results = resolve_with_gemini(self.queue)
+        except ValueError:
+            logger.exception("Gemini resolver returned an invalid response. Marking batch unresolved.")
+            for item in self.queue:
+                mark_listing_unresolved(item["listing_id"])
+            self.queue = []
+            time.sleep(60)
+            return
+
         for result in results.resolutions:
             original_name = self.queue[result.id - 1]["analyzed_item_name"]
             if result.item_id is None:
@@ -57,7 +67,9 @@ class ItemResolver:
             print(f"Resolved: {original_name} -> {result.item_name}")
             update_listing(result.listing_id, result.item_name, result.item_id, 'RESOLVED')
         self.queue = []
-        time.sleep(300)
+        time.sleep(60)
+
+
     def enqueue_resolution(self, analyzed_item_name: str, listing_id: int, candidates):
         if any(item["listing_id"] == listing_id for item in self.queue):
             return
@@ -82,17 +94,14 @@ class ItemResolver:
             self.enqueue_resolution(analyzed_item_name, listing_id, candidates)
 
 def main():
-    # item_resolver = ItemResolver()
-
-    # for item in item_resolver.find_candidates("Wand Scroll 60%", 10):
-    #     print(f"{item['similarity']:6.2f} | {item['id']} | {item['name']}")
-
-    print("MapleStory Resolver running.")
+    logger.info("Service Started")
     item_resolver = ItemResolver()
     while True:
         analyzed_listings = get_analyzed_listings(100)
         for listing in analyzed_listings:
             item_resolver.resolve(listing["analyzed_item_name"], listing['id'])
+        if not analyzed_listings:
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
