@@ -18,6 +18,24 @@ services:
       timeout: 5s
       retries: 10
 
+  seeder:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: services/seeder/Dockerfile
+    env_file:
+      - .env
+    environment:
+      PGHOST: db
+      PGPORT: 5432
+      PGDATABASE: maplestory
+      PGUSER: scanner
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      SERVICE_NAME: Seeder
+    depends_on:
+      db:
+        condition: service_healthy
+
   processor:
     profiles: ["tools"]
     build:
