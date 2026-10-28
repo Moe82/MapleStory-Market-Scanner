@@ -3,16 +3,15 @@
 
 import json
 
-from google import genai
-from google.genai import types
 from pydantic import BaseModel
+
 from database.accessors.items import get_item_name
 from database.accessors.item_listings import update_listing
 from shared.prompts import ITEM_RESOLUTION_PROMPT
+from shared.gemini import generate_json
+from shared.logging import logger
 
 MODEL = "gemini-3.1-flash-lite"
-
-client = genai.Client()
 
 
 class ItemResolution(BaseModel):
@@ -47,29 +46,12 @@ def resolve_with_gemini(items: list[dict]) -> BatchResolutionResult:
         for index, item in enumerate(items, start=1)
     ]
 
-    response = client.models.generate_content(
+    result = generate_json(
         model=MODEL,
         contents=json.dumps(payload),
-        config=types.GenerateContentConfig(
-            system_instruction=ITEM_RESOLUTION_PROMPT,
-            response_mime_type="application/json",
-            response_schema=BatchResolutionResult,
-            temperature=0,
-        ),
+        response_model=BatchResolutionResult,
+        system_instruction=ITEM_RESOLUTION_PROMPT,
     )
-
-    if not response.text:
-        raise ValueError("Gemini returned an empty response")
-
-
-    usage = response.usage_metadata
-    
-    print(f"Input tokens: {usage.prompt_token_count}")
-    print(f"Output tokens: {usage.candidates_token_count}")
-    print(f"Total tokens: {usage.total_token_count}")
-
-    
-    result = BatchResolutionResult.model_validate_json(response.text)
 
     expected_ids = set(range(1, len(items) + 1))
     returned_ids = [resolution.id for resolution in result.resolutions]
@@ -93,15 +75,14 @@ def resolve_with_gemini(items: list[dict]) -> BatchResolutionResult:
             resolution.item_id is not None
             and resolution.item_id not in valid_ids
         ):
-            print(f"Failed item: {original['analyzed_item_name']}")
-            print(f"Gemini selected: {resolution.item_id}")
-
             # strange case were gemini returns an item ID that was not provided o.O
             # query the table and check if this happens to be the right item ID
             # TODO: add validation logic.
+            logger.warning(f"Failed item: {original['analyzed_item_name']}")
+            logger.warning(f"Gemini selected: {resolution.item_id}")
             item_name = get_item_name(resolution.item_id)
             if (item_name):
-                print(
+                logger.warning(
                     f"Candidate mis match: "
                     f"{original['analyzed_item_name']} -> {item_name} "
                     f"(ID: {resolution.item_id})"
@@ -118,7 +99,6 @@ def resolve_with_gemini(items: list[dict]) -> BatchResolutionResult:
 
         resolution.listing_id = original["listing_id"]
 
-        # NEW: Get the resolved item name from the candidate list.
         resolution.item_name = next(
             (
                 candidate["name"]

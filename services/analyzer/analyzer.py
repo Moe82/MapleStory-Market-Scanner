@@ -1,12 +1,11 @@
+
 import json
 from typing import Literal
 
-from google import genai
-from google.genai import types
 from pydantic import BaseModel, field_validator  # used for data validation
 
 from shared.prompts import LISTING_ANALYSIS_PROMPT
-from shared.token_usage import log_token_usage
+from shared.gemini import generate_json
 
 
 MODEL = "gemini-3.1-flash-lite"
@@ -39,7 +38,6 @@ class ItemListing(BaseModel):
         }
 
 
-
 class AnalyzedMessage(BaseModel):
     id: int
     cleaned_text: str
@@ -56,8 +54,6 @@ def analyze_messages(messages: list[dict]) -> AnalysisResult:
     if not messages:
         return AnalysisResult(messages=[])
 
-    client = genai.Client()
-
     payload = []
     for index, message in enumerate(messages, start=1):
       payload.append({
@@ -65,7 +61,7 @@ def analyze_messages(messages: list[dict]) -> AnalysisResult:
           "text": message["raw_text"]
       })
 
-    response = client.models.generate_content(
+    result = generate_json(
         model=MODEL,
         contents=(
             "Analyze these messages and return JSON matching this structure:\n"
@@ -79,21 +75,10 @@ def analyze_messages(messages: list[dict]) -> AnalysisResult:
             "Messages:\n"
             + json.dumps(payload, ensure_ascii=False)
         ),
-        config=types.GenerateContentConfig(
-            system_instruction=LISTING_ANALYSIS_PROMPT,
-            response_mime_type="application/json",
-            temperature=0,
-        ),
+        response_model=AnalysisResult,
+        system_instruction=LISTING_ANALYSIS_PROMPT,
+        enforce_schema=False,
     )
-
-    if not response.text:
-        raise ValueError("Gemini returned an empty response")
-
-    usage = response.usage_metadata
-
-    log_token_usage(response.usage_metadata)
-
-    result = AnalysisResult.model_validate_json(response.text)
 
     expected_ids = set(range(1, len(messages) + 1))
     actual_ids = [message.id for message in result.messages]

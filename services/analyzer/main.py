@@ -18,7 +18,6 @@ from shared.logging import logger
 
 SUCCESS_COOLDOWN = 245 # budget controll
 BATCH_SIZE = 10 # number of ms chat messages to process per gemini request
-MAX_RETRIES = 4
 POLL_INTERVAL = 5
 
 def save_analysis(message_id, raw_text, result):
@@ -30,8 +29,6 @@ def save_analysis(message_id, raw_text, result):
             return
 
         for listing in result.listings:
-            # if listing.price is None:
-            #     continue
             extra_info = {
                 "price": listing.price,
                 "quantity": listing.quantity,
@@ -59,6 +56,8 @@ def main():
     logger.info("Service started")
 
     while True:
+        messages = []
+
         try:
             messages = get_messages(BATCH_SIZE)
 
@@ -66,66 +65,67 @@ def main():
                 time.sleep(POLL_INTERVAL)
                 continue
 
-            analysis = None
-            cooldown = False
+            try:
+                analysis = analyze_messages(messages)
 
-            # Retry temporary server errors 3 times then sleep 1hr.
-            for attempt in range(MAX_RETRIES):
-                try:
-                    analysis = analyze_messages(messages)
-                    break
+            except errors.ClientError as error:
+                if error.code != 429:
+                    raise
 
-                except errors.ClientError as error:
-                    if error.code != 429:
-                        raise
-
-                    logger.warning("Gemini rate limit exceeded. Retrying in 24hr...")
-                    time.sleep(86400)
-                    cooldown = True
-                    break
-
-                except errors.ServerError as error:
-                    if error.code != 503:
-                        raise
-
-                    if attempt == MAX_RETRIES - 1:
-                        logger.warning("Gemini unavailable. Retrying in 1hr...")
-                        time.sleep(3600)
-                        cooldown = True
-                        break
-
-                    logger.warning("Gemini unavailable. Retrying in 5 seconds...")
-                    time.sleep(5)
-
-                except (ValidationError, ValueError) as error:
-                    logger.warning(f"Invalid Gemini response: {error}")
-
-                    with psycopg.connect() as conn:
-                        for message in messages:
-                            update_message_status(message["id"], "FAILED", conn)
-
-                    break
-
-            if cooldown or analysis is None:
+                logger.warning("Gemini rate limit exceeded. Retrying in 24hr...")
+                time.sleep(86400)
                 continue
 
-            while True:
+            except errors.ServerError as error:
+                if error.code != 503:
+                    raise
+
+                logger.warning("Gemini unavailable. Retrying in 1hr...")
+                time.sleep(3600)
+                continue
+
+            except (ValidationError, ValueError) as error:
+                logger.warning(f"Invalid Gemini response: {error}")
+
+                with psycopg.connect() as conn:
+                    for message in messages:
+                        update_message_status(message["id"], "FAILED", conn)
+
+                continue
+
+            for result in analysis.messages:
+                original = messages[result.id - 1]
+
                 try:
-                    for result in analysis.messages:
-                        original = messages[result.id - 1]
-                        save_analysis(original["id"],original["raw_text"],result,)
+                    save_analysis(original["id"],original["raw_text"],result,)
 
-                    break
+                except (psycopg.DataError, psycopg.IntegrityError):
+                    logger.exception(f"Database rejected message {original['id']}. Marking FAILED.")
 
-                except psycopg.Error:
-                    logger.exception("Database save failed. Retrying in 5 seconds...")
-                    time.sleep(POLL_INTERVAL)
+                    with psycopg.connect() as conn:
+                        update_message_status(original["id"], "FAILED", conn)
 
             logger.info(f"Processed {len(messages)} messages")
             time.sleep(SUCCESS_COOLDOWN)
 
+        except psycopg.OperationalError:
+            logger.exception("Database connection failed. Retrying in 5 seconds...")
+            time.sleep(POLL_INTERVAL)
+
         except Exception:
-            logger.exception("Unexpected analyzer error")
+            logger.exception("Unexpected analyzer error. Marking batch FAILED.")
+
+            if messages:
+                try:
+                    with psycopg.connect() as conn:
+                        for message in messages:
+                            current = get_message(message["id"], conn, for_update=True)
+                            if current is not None and current["status"] == "PENDING":
+                                update_message_status(message["id"], "FAILED", conn)
+
+                except psycopg.Error:
+                    logger.exception("Failed to mark batch FAILED.")
+
             time.sleep(POLL_INTERVAL)
 
 

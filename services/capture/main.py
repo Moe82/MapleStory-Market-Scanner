@@ -87,6 +87,10 @@ class StreamManager:
         return result
 
     def next_channel(self):
+        if not self.channels:
+            logger.warning("No channels available to switch to")
+            return
+
         self.current_index = (self.current_index + 1) % len(self.channels)
         self.channel_started_at = time.time()
         self.last_analyzed_image = None
@@ -120,8 +124,13 @@ class StreamManager:
                     self.last_cleanup = time.time()
 
                 # refreash channel list every 3 hours
-                if time.time() - self.last_channels_refreash >= 10800:
+                if not self.channels or time.time() - self.last_channels_refreash >= 10800:
                     self.refresh_channel_list()
+
+                if not self.channels:
+                    logger.warning("No channels available. Retrying in 60 seconds...")
+                    self.stop_event.wait(60)
+                    continue
 
                 result = self.validate_stream()
 
@@ -199,6 +208,10 @@ def main():
         frame_folder = Path(folder)
         while not stop_event.is_set():
             try:
+                if not stream_manager.channels:
+                    stop_event.wait(RETRY_DELAY)
+                    continue
+
                 # returns channel name if its offline
                 offline_channel = capture(frame_folder, stream_manager, subprocess, active_processes, stop_event)
 
