@@ -14,8 +14,8 @@ from database.accessors.items import insert_item, is_item_synced
 from shared.logging import logger
 
 
-REGION = os.getenv("REGION_TO_SEED", "gms")
-VERSION = os.getenv("VERSION_TO_SEED", "83")
+REGION = os.getenv("REGION_TO_SEED", "MCW")
+VERSION = os.getenv("VERSION_TO_SEED", "1")
 
 API = f"https://maplestory.io/api/{REGION}/{VERSION}/item"
 ICON_DIR = ROOT / "data/items/icons" / REGION / VERSION
