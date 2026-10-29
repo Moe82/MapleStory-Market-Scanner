@@ -35,9 +35,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - ./data:/app/data
 
   processor:
     profiles: ["tools"]
+    restart: unless-stopped
     build:
       context: .
       dockerfile: services/processor/Dockerfile
@@ -88,6 +91,7 @@ services:
         condition: service_healthy
 
   resolver:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: services/resolver/Dockerfile
