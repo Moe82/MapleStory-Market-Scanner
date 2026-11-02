@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from stream_discovery import discover_streams
-from analyzer import analyze_stream
+from analyzer import analyze_stream, get_chat_box_coords
 from shared.logging import logger
 from capture import capture
 
@@ -20,7 +20,9 @@ PENDING_EXTRACTION_DIR = SCREENSHOTS_DIR / "pending_extraction"
 ORIGINAL_SCREENSHOT_DIR = SCREENSHOTS_DIR / "original"
 PROCESSED_SCREENSHOT_DIR = SCREENSHOTS_DIR / "processed"
 NO_TEXT_DETECTED_SCREENSHOT_DIR = SCREENSHOTS_DIR / "no_text_detected"
-RETRY_DELAY = 15
+RETRY_DELAY = 5
+
+APP_ENV = os.getenv("APP_ENV", "dev")
 
 stop_event = threading.Event()
 active_processes = []
@@ -37,28 +39,32 @@ signal.signal(signal.SIGTERM, stop)
 signal.signal(signal.SIGINT, stop)
 
 
-
 class StreamManager:
     def __init__(self, validation_interval=300):
-        self.channels = discover_streams()
-        self.current_index = 0
-        self.validation_interval = int(os.environ["STREAM_VALIDATION_INTERVAL"])
+        self.validation_interval = int(os.getenv("STREAM_VALIDATION_INTERVAL", validation_interval))
         self.stop_event = threading.Event()
+
+        self.channels = discover_streams()
+        self.current_channel_index = 0
         self.channel_started_at = time.time()
         self.last_analyzed_image = None
         self.missing_screenshots = 0
         self.last_cleanup = 0 # setting to zero so that file cleanup runs once on startup
         self.last_channels_refreash = time.time()
+        self.last_channel_validation = time.time()
+        self.current_channel_is_valid = False
+        self.current_channel_chat_box_coords = None
 
     @property
     def current_channel(self):
         if len(self.channels) == 0:
             return ""
-        return self.channels[self.current_index]
+        return self.channels[self.current_channel_index]
 
     def validate_stream(self):
         logger.info(f"Validating {self.current_channel}")
 
+        # get the latest screenshot for the current channel
         image_path = max(
             ORIGINAL_SCREENSHOT_DIR.glob(f"{self.current_channel}_*.png"),
             key=os.path.getmtime,
@@ -81,9 +87,16 @@ class StreamManager:
             logger.info("Screenshot already analyzed")
             return None
 
+        # Use Gemini to validate the stream.
         result = analyze_stream(image_path)
-        self.last_analyzed_image = image_path
 
+        # Fetch chat box coordinates using gemini
+        if result == "good" and self.current_channel_chat_box_coords == None:
+            self.current_channel_chat_box_coords = get_chat_box_coords(image_path)
+            if self.current_channel_chat_box_coords == None:
+                return None
+
+        self.last_analyzed_image = image_path       
         return result
 
     def next_channel(self):
@@ -91,10 +104,12 @@ class StreamManager:
             logger.warning("No channels available to switch to")
             return
 
-        self.current_index = (self.current_index + 1) % len(self.channels)
+        logger.info(f"Switching to stream: {self.current_channel}")
+        self.current_channel_index = (self.current_channel_index + 1) % len(self.channels)
         self.channel_started_at = time.time()
         self.last_analyzed_image = None
-        logger.info(f"Switching to stream: {self.current_channel}")
+        self.current_channel_is_valid = False
+        self.current_channel_chat_box_coords = None
 
     def refresh_channel_list(self):
         new_channels = discover_streams()
@@ -105,20 +120,20 @@ class StreamManager:
             self.channels = new_channels
 
             if current_channel in new_channels:
-                self.current_index = new_channels.index(current_channel)
+                self.current_channel_index = new_channels.index(current_channel)
             else:
-                self.current_index = 0
+                self.current_channel_index = 0
                 self.channel_started_at = time.time()
                 self.last_analyzed_image = None
                 self.missing_screenshots = 0
+                self.current_channel_is_valid = False
+                self.current_channel_chat_box_coords = None
             logger.info(f"Refreshed channels list: {len(self.channels)} total")
 
     def run(self):
-        self.stop_event.wait(60) # give the initial run some time to gather screenshots
-
         while not self.stop_event.is_set():
             try:
-                # delete old files once every hour
+                # delete old files
                 if time.time() - self.last_cleanup >= 3600:
                     cleanup_old_screenshots()
                     self.last_cleanup = time.time()
@@ -134,17 +149,14 @@ class StreamManager:
 
                 result = self.validate_stream()
 
-                if result == "ad":
-                    self.missing_screenshots = 0
-                    delay = 60
-
-                elif result == "bad":
+                if result == "bad":
                     self.next_channel()
                     self.missing_screenshots = 0
                     delay = 60
 
                 elif result == "good":
                     self.missing_screenshots = 0
+                    self.current_channel_is_valid = True
                     delay = self.validation_interval
 
                 elif result is None:
@@ -154,16 +166,21 @@ class StreamManager:
                     if self.missing_screenshots >= 3:
                         self.next_channel()
                         self.missing_screenshots = 0
-
+                    self.current_channel_is_valid = False
+                    self.current_channel_chat_box_coords = None
                     delay = 60
 
                 else:
                     logger.warning(f"Unexpected result: {result}")
+                    self.current_channel_is_valid = False
+                    self.current_channel_chat_box_coords = None
                     delay = 60
 
             except Exception as error:
                 logger.error(f"Validation error: {error}")
                 delay = 60
+                self.current_channel_is_valid = False
+                self.current_channel_chat_box_coords = None
 
             self.stop_event.wait(delay)
 
@@ -178,7 +195,11 @@ class StreamManager:
 
 def cleanup_old_screenshots():
     logger.info("Deleting old screenshots.")
-    cutoff = time.time() - 86400  # 24 hours
+    if APP_ENV == "prod":
+        cutoff = time.time() - 10800  # 3 hours
+    else:
+        cutoff = time.time() - 86400  # 24 hours
+
     for folder in [
         ORIGINAL_SCREENSHOT_DIR,
         PENDING_EXTRACTION_DIR,
