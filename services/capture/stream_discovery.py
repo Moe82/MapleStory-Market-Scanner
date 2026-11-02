@@ -46,6 +46,7 @@ def discover_streams():
     # fetch 50 streams
     result = fetch_data("streams", {
         "game_id": game_id,
+        "language": "en",
         "first": 50,
     }, token)
 
@@ -56,9 +57,6 @@ def discover_streams():
         if stream["user_login"].lower() in BLACKLIST:
             continue
 
-        channels.append(stream["user_login"])
-
-    for stream in result["data"]:
         channels.append(stream["user_login"])
 
     return channels
