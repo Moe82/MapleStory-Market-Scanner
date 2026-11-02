@@ -1,12 +1,8 @@
+
 STREAM_VALIDATION_PROMPT = """
-Analyze this Twitch screenshot and return a status with a brief reason.
+Analyze this Twitch screenshot of the game Maple Story Classic World and return a status with a brief reason.
 
-1. Advertisement
-
-Return "ad" if a video advertisement is interrupting gameplay.
-Ignore streamer overlays, webcams, and in-game advertisements.
-
-2. Game
+1. Game
 
 The primary gameplay must be classic/old-school MapleStory, including
 pre-Big-Bang, Classic World, or classic-style private servers.
@@ -14,7 +10,7 @@ pre-Big-Bang, Classic World, or classic-style private servers.
 Use visual clues such as maps, monsters, characters, skills, and game UI.
 Return "bad" if the game is modern MapleStory, another game, or uncertain.
 
-3. Chat window
+2. Chat window
 
 Evaluate ONLY the chat window in the primary (largest) gameplay view.
 Ignore Twitch chat and smaller picture-in-picture gameplay views.
@@ -35,37 +31,45 @@ Only count rows within the actual visible chat-history panel.
 Do not count the input field, surrounding game space, or hidden rows.
 Empty rows may count if their space is clearly visible inside the panel.
 
-4. Player usernames
+3. Player usernames
 
 A MapleStory chat message generally follows this format:
 
 [Optional timestamp] PlayerName [Optional channel badge] : MessageText
 
 Example:
-[16:52] noran CH21 [ear icon] : B> Silver Guardian att+34
+[16:52] noran CH21 : B> Silver Guardian att+34
+Gamay CH11 : [Bow Attack Scroll: Greater] S> Bow Attack Scroll for 22k
 
 - The timestamp is optional.
 - The PLAYER USERNAME appears at the beginning, after any timestamp.
-- Colored messages (pink, cyan, yellow, or blue) may include a channel
-  badge such as CH21 and a small ear icon after the username.
+- Colored messages (pink, cyan, yellow, or blue) have a channel badge
+  such as CH21 immediately after the username approximately 99% of the time.
+- The channel badge may include a small ear icon.
+- Player usernames are NEVER enclosed in square brackets [ ].
+- Text enclosed in square brackets, such as [Blue Lutia] or [Pumpkin Basket],
+  represents an item name, NOT a username.
 - Everything after the colon is message content, not the username.
-- Item names such as [Blue Lutia] are NOT usernames.
 - A message may wrap onto multiple text rows.
 
 IMPORTANT:
 - Inspect the LEFT SIDE of the chat window, where usernames appear.
+- There must be at least a few pixels of visible clearance between the
+  LEFT edge of the chat window and any overlay or obstruction.
+- If the left edge is covered, cropped, or touches an overlay, return "bad".
 - The FULL username must be visible and readable for every visible message.
+- For colored messages, look for the channel badge immediately after the username.
+- Never mistake bracketed item names for player usernames.
 - If an overlay covers the beginning of a message, its username is OBSTRUCTED.
 - If you cannot identify a username, mark it UNREADABLE.
 - Never guess usernames from item names or message text.
 - Empty chat rows do not require usernames.
 
-5. Final decision
+
+
+4. Final decision
 
 Return exactly one status:
-
-"ad":
-- A video advertisement is interrupting gameplay.
 
 "good":
 - The game is classic MapleStory.
@@ -96,12 +100,71 @@ obstructed, missing, or unreadable player username.
 """
 
 
+CHAT_BOX_PROMPT = """
+Locate the in-game chat message box in this Twitch screenshot of MapleStory Classic World.
 
+1. Game view
 
+Identify the primary (largest) MapleStory gameplay view.
+Ignore Twitch chat and smaller picture-in-picture gameplay views.
 
+2. Chat window
 
+The chat window is typically horizontally centered near the bottom
+of the gameplay, above the player's level, HP, and MP display.
 
+Identify the expanded rectangular chat-history panel containing
+the game's messages.
 
+A minimized chat window appears as a thin horizontal bar, sometimes
+containing one readable message. This is NOT an expanded chat window.
+
+3. Chat message identification
+
+A MapleStory chat message generally follows this format:
+
+[Optional timestamp] PlayerName [Optional channel badge] : MessageText
+
+Examples:
+[16:52] noran CH21 [ear icon] : B> Silver Guardian att+34
+[12:30] Player123 : Selling Brown Work Gloves 10m
+[14:15] MapleFan CH5 [ear icon] : S> GFA 60% 2m
+[09:42] TraderJoe : B> [Blue Lutia] 500k
+
+- The timestamp is optional.
+- The PLAYER USERNAME appears at the beginning, after any timestamp.
+- Colored megaphone messages (pink, cyan, yellow, or blue) may
+  include a channel badge such as CH21 and a small ear icon.
+- Everything after the colon is message content, not the username.
+- Item names such as [Blue Lutia] are NOT usernames.
+- Messages may wrap onto multiple text rows.
+- The chat panel may contain empty rows.
+
+Use these message patterns to distinguish the actual MapleStory
+chat-history panel from other game UI, Twitch chat, and overlays.
+
+4. Bounding box
+
+Return the coordinates of the ENTIRE expanded chat-history panel.
+
+- Include all visible message rows, including empty rows.
+- Include the full width, especially the left side containing usernames.
+- Include the complete colored message backgrounds, not just the text.
+- Include the complete visible chat-history area from top to bottom.
+- Exclude the chat input field and surrounding game UI.
+- Do not return coordinates for individual messages.
+- Do not include Twitch chat or streamer overlays.
+- Do not guess boundaries that cannot be identified.
+
+The bounding box must represent the chat-history PANEL,
+not the text or individual colored message bands inside it.
+
+Return box_2d as [ymin, xmin, ymax, xmax], normalized to 0-1000
+relative to the entire screenshot.
+
+Return an empty list if an expanded chat-history panel cannot
+be identified or its boundaries cannot be reliably determined.
+"""
 
 
 
@@ -180,10 +243,6 @@ Examples:
   Intent: SELL
   Price: 60000
 
-- "B> WG 2m"
-  Item: Work Gloves
-  Intent: BUY
-  Price: 2000000
 
 - "S> Cape LUK Scroll 60%"
   Item: Cape LUK Scroll: Intermediate
@@ -191,7 +250,7 @@ Examples:
   Price: null
 
 - "S> GFA 60% 250k"
-  Item: Glove for Attack Scroll: Intermediate
+  Item: Gloves Attack Scroll: Intermediate
   Intent: SELL
   Price: 250000
 
