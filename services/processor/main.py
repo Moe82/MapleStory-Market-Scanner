@@ -131,6 +131,8 @@ def main():
                 if not messages:
                     if APP_ENV == "dev":
                         shutil.move(str(image_path), str(FAILED_DIR / image_path.name))
+                    else:
+                        image_path.unlink()
                     continue
 
                 # step 4: Filter out duplicate messages.
