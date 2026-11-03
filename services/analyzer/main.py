@@ -16,8 +16,10 @@ from database.accessors.item_listings import insert_item_listing
 from analyzer import analyze_messages
 from shared.logging import logger
 
-SUCCESS_COOLDOWN = 245 # budget controll
+SUCCESS_COOLDOWN = 10 # budget controll
 BATCH_SIZE = 10 # number of ms chat messages to process per gemini request
+MIN_BATCH_SIZE = 3
+MAX_BATCH_WAIT = 10
 POLL_INTERVAL = 5
 
 def save_analysis(message_id, raw_text, result):
@@ -54,6 +56,7 @@ def save_analysis(message_id, raw_text, result):
 
 def main():
     logger.info("Service started")
+    wait_started = None
 
     while True:
         messages = []
@@ -61,9 +64,18 @@ def main():
         try:
             messages = get_messages(BATCH_SIZE)
 
-            if len(messages) < BATCH_SIZE:
+            if not messages:
+                wait_started = None
+            elif wait_started is None:
+                wait_started = time.monotonic()
+
+            if len(messages) < BATCH_SIZE and (
+                len(messages) < MIN_BATCH_SIZE or time.monotonic() - wait_started < MAX_BATCH_WAIT
+            ):
                 time.sleep(POLL_INTERVAL)
                 continue
+
+            wait_started = None
 
             try:
                 analysis = analyze_messages(messages)
