@@ -6,13 +6,15 @@ CREATE TABLE item_listings (
 
     raw_text TEXT NOT NULL,
     analyzed_item_name TEXT,
-    extra_info JSONB,
     resolved_item_name TEXT,
     resolved_item_id BIGINT,
 
+    extra_info JSONB,
+    
     status TEXT NOT NULL DEFAULT 'UNANALYZED'
         CHECK (status IN ('UNANALYZED', 'ANALYZED', 'RESOLVED', 'UNRESOLVED','REVIEW', 'FAILED')),
 
-    observed_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    message_observed_at TIMESTAMPTZ NOT NULL,
+    message_processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    message_resolved_at TIMESTAMPTZ
 );

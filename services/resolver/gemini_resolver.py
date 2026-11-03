@@ -92,9 +92,8 @@ def resolve_with_gemini(items: list[dict]) -> BatchResolutionResult:
                 result.resolutions.remove(resolution)
                 continue
             else:
-                raise ValueError(
-                    f"Gemini returned unknown item ID {resolution.item_id}"
-                )
+                logger.warning(f"Gemini returned unknown item ID {resolution.item_id}")
+                resolution.item_id = None
 
 
         resolution.listing_id = original["listing_id"]
