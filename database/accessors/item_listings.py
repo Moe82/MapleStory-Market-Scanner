@@ -24,7 +24,7 @@ def insert_item_listing(
                 analyzed_item_name,
                 extra_info,
                 status,
-                observed_at
+                message_observed_at
             )
             VALUES (%s, %s, %s, %s, %s, %s)
             """,
@@ -70,42 +70,30 @@ def update_listing(
                 UPDATE item_listings
                 SET resolved_item_name = %s,
                     resolved_item_id = %s,
-                    status = %s
+                    status = %s,
+                    message_resolved_at = CASE WHEN %s = 'RESOLVED' THEN NOW() ELSE NULL END
                 WHERE id = %s
                 """,
-                (resolved_item_name, resolved_item_id, status, listing_id),
+                (resolved_item_name, resolved_item_id, status, status, listing_id),
             )
 
 
-def mark_listing_unresolved(listing_id: int) -> None:
-    """Mark an item listing as unresolved."""
+def update_listing_status(listing_id: int, status: str) -> None:
+    """Update an item listing's status and clear resolution data."""
+
+    if status not in ("UNRESOLVED", "REVIEW", "FAILED"):
+        raise ValueError(f"Invalid status: {status}")
 
     with psycopg.connect() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE item_listings
-                SET status = 'UNRESOLVED',
+                SET status = %s,
                     resolved_item_name = NULL,
-                    resolved_item_id = NULL
+                    resolved_item_id = NULL,
+                    message_resolved_at = NULL
                 WHERE id = %s
                 """,
-                (listing_id,),
-            )
-
-
-def mark_listing_for_review(listing_id: int) -> None:
-    """Mark an item listing as unresolved."""
-
-    with psycopg.connect() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE item_listings
-                SET status = 'REVIEW',
-                    resolved_item_name = NULL,
-                    resolved_item_id = NULL
-                WHERE id = %s
-                """,
-                (listing_id,),
+                (status, listing_id),
             )
