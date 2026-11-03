@@ -18,6 +18,8 @@ ocr = PaddleOCR(
     use_doc_orientation_classify=False,
     use_doc_unwarping=False,
     use_textline_orientation=False,
+    engine="onnxruntime",
+    device="cpu",
 )
 
 DEBUG_PROCESSOR = os.getenv("DEBUG_PROCESSOR", "false").lower() == "true"

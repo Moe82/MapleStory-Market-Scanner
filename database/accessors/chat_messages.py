@@ -29,10 +29,10 @@ def insert_messages(messages: list[dict]) -> None:
             for message in messages:
                 cursor.execute(
                     """
-                    INSERT INTO chat_messages (raw_text, observed_at)
-                    VALUES (%s, %s)
+                    INSERT INTO chat_messages (raw_text, observed_at, screenshot_filename)
+                    VALUES (%s, %s, %s)
                     """,
-                    (message["raw_text"], message["observed_at"]),
+                    (message["raw_text"], message["observed_at"], message["screenshot_filename"]),
                 )
 
 
