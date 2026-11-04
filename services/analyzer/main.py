@@ -11,7 +11,7 @@ from database.accessors.chat_messages import (
     get_message,
     update_message_status,
 )
-from database.accessors.item_listings import insert_item_listing
+from database.accessors.item_listings import insert_item_listing, has_matching_listing
 
 from analyzer import analyze_messages
 from shared.logging import logger
@@ -41,6 +41,19 @@ def save_analysis(message_id, raw_text, result):
                 "player_name": listing.player_name,
             }
 
+            # confirm that there are no matching listings in the database
+            matching_id = has_matching_listing(
+                listing.name,
+                listing.price,
+                listing.player_name,
+                message["observed_at"],
+            )
+            if matching_id is not None:
+                logger.warning(
+                    f"Duplicate listing skipped for chat message {message_id}. Matching ID: {matching_id} "
+                )
+                continue
+
             insert_item_listing(
                 message_id=message_id,
                 raw_text=raw_text,
@@ -48,6 +61,7 @@ def save_analysis(message_id, raw_text, result):
                 extra_info=extra_info,
                 status="ANALYZED",
                 observed_at=message["observed_at"],
+                player_name=listing.player_name,
                 conn=conn,
             )
 

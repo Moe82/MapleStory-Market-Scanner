@@ -11,6 +11,7 @@ def insert_item_listing(
     extra_info: dict,
     status: str,
     observed_at: datetime,
+    player_name,
     conn: psycopg.Connection,
 ) -> None:
     """Insert a single item listing"""
@@ -24,9 +25,10 @@ def insert_item_listing(
                 analyzed_item_name,
                 extra_info,
                 status,
-                message_observed_at
+                message_observed_at,
+                player_name
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 message_id,
@@ -35,7 +37,8 @@ def insert_item_listing(
                 Jsonb(extra_info),
                 status,
                 observed_at,
-            ),
+                player_name,
+            )
         )
 
 
@@ -97,3 +100,25 @@ def update_listing_status(listing_id: int, status: str) -> None:
                 """,
                 (status, listing_id),
             )
+
+def has_matching_listing(analyzed_item_name: str, price: int | None, player_name: str, observed_at: datetime) -> int | None:
+    """Return the chat message ID of a matching listing observed in the preceding 15 minutes."""
+
+    with psycopg.connect() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT message_id
+                FROM item_listings
+                WHERE analyzed_item_name = %s
+                  AND (extra_info->>'price')::BIGINT IS NOT DISTINCT FROM %s::BIGINT
+                  AND player_name = %s
+                  AND message_observed_at BETWEEN %s::TIMESTAMPTZ - INTERVAL '15 minutes' AND %s::TIMESTAMPTZ
+                ORDER BY message_observed_at DESC
+                LIMIT 1
+                """,
+                (analyzed_item_name, price, player_name, observed_at, observed_at),
+            )
+
+            result = cursor.fetchone()
+            return result[0] if result else None
