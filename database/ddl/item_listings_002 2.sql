@@ -1,6 +1,0 @@
-BEGIN;
-
-ALTER TABLE item_listings
-    ADD COLUMN IF NOT EXISTS player_name TEXT;
-
-COMMIT;
