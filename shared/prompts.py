@@ -188,7 +188,7 @@ Use the same username for all listings extracted from one message.
 If the username cannot be determined, return null.
 Do not confuse item names or channel badges with usernames.
 
-GAME CONTEXT:
+1. GAME CONTEXT:
 - The game is MapleStory Classic World, not modern MapleStory.
 - Players buy, sell, and trade equipment, scrolls, consumables,
   cosmetics, and other game items.
@@ -200,7 +200,7 @@ GAME CONTEXT:
 - OCR text may contain broken words, incorrect symbols, or missing
   characters.
 
-TRADE TERMINOLOGY:
+2. TRADE TERMINOLOGY:
 - S> = Selling
 - B> = Buying
 - T> = Trading
@@ -213,11 +213,11 @@ TRADE TERMINOLOGY:
 - c/o = Current offer
 - a/w = Auto-win price
 - OBO = Or best offer
-- PM / DM = Private message
+- PM / DM / PMO = Private message
 - Offer = Asking buyers to propose a price
 - CH01, CH02, etc. = Channel identifiers, not items
 
-COMMON ABBREVIATIONS:
+3. COMMON ABBREVIATIONS:
 - WG = Work Gloves
 - BWG = Brown Work Gloves
 - GFA = Glove for Attack
@@ -232,7 +232,7 @@ COMMON ABBREVIATIONS:
 - NX = Nexon Cash
 - SCG = Stormcaster Gloves
 
-ITEM NORMALIZATION:
+4. ITEM NORMALIZATION:
 Interpret item names using MapleStory Classic World conventions.
 
 Expand established abbreviations into their full item names.
@@ -242,7 +242,6 @@ Examples:
   Item: Brown Work Gloves
   Intent: SELL
   Price: 60000
-
 
 - "S> Cape LUK Scroll 60%"
   Item: Cape LUK Scroll: Intermediate
@@ -267,37 +266,134 @@ from other versions exist in Classic World.
 When unsure about an item's identity, retain the recognizable
 original name and mark the listing for review.
 
-ITEM ATTRIBUTES:
-Extract explicitly stated equipment stats, upgrades, and other
-numeric attributes into the attributes dictionary.
+5. BRACKETED ITEM NAMES AND TRADE TARGET IDENTIFICATION:
 
-Keep attributes separate from the canonical item name.
+There are two general types of MapleStory chat messages:
+1. Messages containing a linked item name enclosed in square brackets,
+   such as [Fairy Wand].
+2. Messages without a linked item name, where item names must be
+   identified from the message text.
+
+A bracketed item name does not necessarily identify the item being
+bought or sold. Players sometimes include linked items while
+broadcasting messages about completely unrelated items or topics.
+
+Determine which item each buying, selling, or trading statement
+actually refers to using these rules:
+
+1. When a message contains a bracketed item name, treat it
+   as the primary item being traded unless the message
+   clearly establishes that a different item is being traded.
+
+   Generic equipment descriptions, class names, abbreviations,
+   stats, upgrades, and prices do NOT establish a different item.
+
+   Examples of generic descriptions:
+   - "thief glv" = thief glove
+   - "warrior helmet" = warrior helmet
+   - "12crt" = 12 critical damage
+   - "6att" = 6 weapon attack
+
+   These descriptions must not replace a specific bracketed
+   item name when they describe that item.
+
+2. Override the bracketed item name ONLY when the surrounding
+   text clearly refers to a distinct item being traded.
+
+   Example:
+   "[Pan Lid] B> 60% weapon attack scrolls"
+   The player is buying weapon attack scrolls, NOT Pan Lid.
+
+   A generic description of the bracketed item's equipment
+   type is insufficient evidence to override its name.
+3. If the text outside the brackets clearly identifies multiple
+   distinct items being traded, create a separate listing for each.
+   Do not create a listing for the bracketed item unless it is
+   also being traded.
+
+4. If the message does not contain a bracketed item, identify
+   the traded items from the message text normally.
+
+5. If it is unclear whether the surrounding text describes the
+   bracketed item or refers to a different item, mark the affected
+   listing needs_review=true. Do not invent an item identity
+   or create speculative additional listings.
+
+6. A bracketed item alone does not establish buying or selling
+   intent. If no item trade is identifiable, return an empty
+   listings array.
+
+EXAMPLES:
+
+"Tube CH32 1: [Dark Cleave] S>12crt thief glv 3.7m"
+- Item: Dark Cleave
+- Intent: SELL
+- Price: 3700000
+- Attributes: {"critical": 12}
+- "thief glv" describes the linked item, not a separate item.
+
+"Sizuku CH19 : [Pan Lid] B> 60% weapon attack scrolls"
+- Item: 60% weapon attack scrolls
+- Intent: BUY
+- Price: null
+- Do not create a listing for Pan Lid.
+- Mark for review if the specific scroll identity is ambiguous.
+
+"Blooms CH3S [Founder's Mystery Fashion Crate] S> Founder crates"
+- Item: Founder's Mystery Fashion Crate
+- Intent: SELL
+- "Founder crates" refers to the linked item.
+
+"[Fairy Wand] S> 500k"
+- Item: Fairy Wand
+- Intent: SELL
+- Price: 500000
+
+"S> black cat beanie 350k, Emerald Earring +8 STR"
+- Extract separate listings for Black Cat Beanie and Emerald Earring.
+- Preserve the stated price and attributes for their respective items.
+
+6. ITEM ATTRIBUTE NORMALIZATION:
+
+Use MapleStory's internal equipment stat codes for all
+attribute names.
+
+Map player terminology and abbreviations to the corresponding
+internal stat codes.
+
+- STR -> incSTR
+- DEX -> incDEX
+- INT -> incINT
+- LUK -> incLUK
+- ATT, WATK, WA -> incPAD (Weapon Attack)
+- MATK, MATT -> incMAD (Magic Attack)
+- WDEF -> incPDD (Weapon Defense)
+- MDEF -> incMDD (Magic Defense)
+- CRD, Critical Damage -> incCRD
+- ACC -> incACC (Accuracy)
+- AVOID, EVA -> incEVA (Avoidability)
+- HP -> incMHP (Maximum HP)
+- MP -> incMMP (Maximum MP)
+- SPEED -> incSpeed
+- JUMP -> incJump
+
+Only extract explicitly stated item attributes.
+
+Never invent missing attributes or values.
+
+Do not confuse item attributes with item requirements,
+prices, quantities, or scroll success rates.
+
+If an attribute cannot confidently be mapped to an
+allowed code, do not invent a code. Mark the listing
+for review.
 
 Examples:
-- "S> work gloves attack+6 critical+2"
-  name: "Work Gloves"
-  attributes: {"attack": 6, "critical": 2}
+"S> WG 6 ATT" -> incPAD: 6
+"S> helmet 8 STR" -> incSTR: 8
+"S> 12 CRD thief gloves" -> incCRD: 12
 
-- "S> Lionheart+11"
-  name: "Lionheart"
-  attributes: {"enhancement": 11}
-
-- "S> helmet INT+5 LUK+3"
-  attributes: {"INT": 5, "LUK": 3}
-
-Use consistent attribute names for equivalent stats.
-Preserve distinctions between different stat types.
-
-Do not confuse item attributes with prices, quantities,
-scroll success rates, or item names.
-
-Do not infer unstated stats or upgrades.
-If no attributes are specified, return an empty dictionary.
-
-If an attribute is ambiguous, preserve only what can be
-confidently identified and mark the listing for review.
-
-OCR CORRECTION:
+7. OCR CORRECTION:
 Correct obvious OCR errors using MapleStory terminology and
 the surrounding message context.
 
@@ -317,7 +413,7 @@ Never invent missing prices, quantities, stats, or item names.
 A correction supported only by an uncertain guess must be
 marked needs_review=true.
 
-PRICE EXTRACTION:
+8. PRICE EXTRACTION:
 Convert mesos into integers:
 - 60k = 60000
 - 2.5m = 2500000
@@ -338,8 +434,22 @@ Never treat a current offer or buying offer as a completed sale.
 
 If no explicit numeric price is provided, return price=null.
 
-QUANTITY:
-Extract quantities when explicitly stated or clearly implied.
+9. QUANTITY:
+
+Extract quantities only when a numeric quantity is explicitly stated.
+
+Do not assume quantity=1 simply because a player is buying
+or selling an item.
+
+If the quantity is not explicitly stated, return null.
+
+Examples:
+- "S> Pan Lid 500k" -> quantity=null
+- "S> 2 BWG 60k ea" -> quantity=2, price=60000
+- "B> GFA 60% 25k each" -> quantity=null, price=25000
+
+Do not confuse stats, prices, scroll percentages,
+or equipment levels with quantities.
 
 Examples:
 - "4 of these, 19k each" -> quantity=4, price=19000
@@ -348,7 +458,7 @@ Examples:
 Do not confuse enhancement stats, scroll percentages,
 or item levels with quantities.
 
-MESSAGE INTERPRETATION:
+10. MESSAGE INTERPRETATION:
 - A message can contain multiple BUY and SELL listings.
 - Determine intent separately for each listing.
 - Preserve item attributes such as attack, INT, LUK,
@@ -361,7 +471,7 @@ MESSAGE INTERPRETATION:
 - Do not invent prices for messages saying "offer", "PMO",
   or "whisper offers".
 
-OUTPUT REQUIREMENTS:
+11. OUTPUT REQUIREMENTS:
 - Follow the provided JSON response schema exactly.
 - Preserve every input message ID.
 - Return one analyzed message for every input message.
@@ -390,7 +500,7 @@ Examples:
 - "Work Gloves ATT+6" -> attack: 6
 - "Helmet INT+5" -> INT: 5
 
-SCROLL NORMALIZATION:
+12. SCROLL NORMALIZATION:
 
 Map common scroll abbreviations to their canonical
 MapleStory Classic World item names.
@@ -410,6 +520,9 @@ use the canonical name rather than a generic description.
 
 Do not invent canonical names when the mapping is uncertain.
 """
+
+
+
 
 
 ITEM_RESOLUTION_PROMPT = """

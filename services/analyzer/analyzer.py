@@ -2,7 +2,7 @@
 import json
 from typing import Literal
 
-from pydantic import BaseModel, field_validator  # used for data validation
+from pydantic import BaseModel, Field, field_validator  # used for data validation
 
 from shared.prompts import LISTING_ANALYSIS_PROMPT
 from shared.gemini import generate_json
@@ -11,13 +11,22 @@ from shared.gemini import generate_json
 MODEL = "gemini-3.1-flash-lite"
 
 
+class ItemAttribute(BaseModel):
+    code: Literal[
+        "incSTR", "incDEX", "incINT", "incLUK",
+        "incPAD", "incMAD", "incPDD", "incMDD",
+        "incCRD", "incACC", "incEVA",
+        "incMHP", "incMMP", "incSpeed", "incJump",
+    ]
+    value: int
+
 class ItemListing(BaseModel):
     name: str
     player_name: str | None = None
     price: int | None = None
     quantity: int | None = None
     intent: Literal["BUY", "SELL", "TRADE", "UNKNOWN"]
-    attributes: dict[str, int] = {}
+    attributes: dict[str, int] = Field(default_factory=dict)
     needs_review: bool = False
 
     @field_validator("attributes", mode="before") # 'mode:before': runs transformation logic (normalize_attributes) prior to type conversion
