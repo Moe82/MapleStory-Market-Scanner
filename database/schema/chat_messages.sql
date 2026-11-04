@@ -4,10 +4,11 @@ CREATE TABLE chat_messages (
     screenshot_filename TEXT,
     observed_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    status TEXT NOT NULL DEFAULT 'pending'
+    status TEXT NOT NULL DEFAULT 'PENDING'
         CHECK (status IN (
             'PENDING',
             'ANALYZED',
+            'RESOLVED',
             'FAILED'
         ))
 );
