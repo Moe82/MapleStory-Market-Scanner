@@ -12,6 +12,8 @@ from database.accessors.item_listings import get_analyzed_listings, update_listi
 from gemini_resolver import resolve_with_gemini
 from shared.logging import logger
 
+from shared.logging import logger
+
 
 BATCH_SIZE = 10
 MAX_BATCH_WAIT = 10
@@ -118,14 +120,14 @@ class ItemResolver:
 
             if result.item_id is None:
                 if fuzzy:
-                    print(f"Unresolved (fuzzy): {original_name}")
+                    logger.info(f"Unresolved (fuzzy): {original_name}")
                     update_listing_status(result.listing_id, "UNRESOLVED")
                 else:
-                    print(f"Unresolved (BM25), trying fuzzy: {original_name}")
+                    logger.info(f"Unresolved (BM25), trying fuzzy: {original_name}")
                     self.retry_with_fuzzy(original_name, result.listing_id)
                 continue
 
-            print(f"Resolved ({'fuzzy' if fuzzy else 'BM25'}): {original_name} -> {result.item_name}")
+            logger.info(f"Resolved ({'fuzzy' if fuzzy else 'BM25'}): {original_name} -> {result.item_name}")
             update_listing(result.listing_id, result.item_name, result.item_id, 'RESOLVED')
 
     def enqueue_resolution(self, analyzed_item_name: str, listing_id: int, candidates, fuzzy=False):
