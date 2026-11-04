@@ -8,9 +8,10 @@ CREATE TABLE item_listings (
     analyzed_item_name TEXT,
     resolved_item_name TEXT,
     resolved_item_id BIGINT,
+    player_name TEXT,
 
     extra_info JSONB,
-    
+
     status TEXT NOT NULL DEFAULT 'UNANALYZED'
         CHECK (status IN ('UNANALYZED', 'ANALYZED', 'RESOLVED', 'UNRESOLVED','REVIEW', 'FAILED')),
 
