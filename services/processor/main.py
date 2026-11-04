@@ -23,7 +23,7 @@ APP_ENV = os.getenv("APP_ENV", "dev")
 
 class ScreenshotQueue:
     """Detect duplicate screenshots"""
-    def __init__(self, window_seconds=60, pixel_threshold=25, max_changed_fraction=0.001):
+    def __init__(self, window_seconds=180, pixel_threshold=25, max_changed_fraction=0.001):
         self.window_seconds = window_seconds
         self.pixel_threshold = pixel_threshold
         self.max_changed_fraction = max_changed_fraction
@@ -67,10 +67,10 @@ class ScreenshotQueue:
 
 
 class MessageQueue:
-    def __init__(self):
+    def __init__(self, window_seconds=180, similarity_threshold = 0.87):
         self.queue = []
-        self.window = 60  # 60 seconds
-        self.similarity_threshold = 0.90  # TODO: needs testing
+        self.window = window_seconds
+        self.similarity_threshold = similarity_threshold
 
     def expire(self, captured_at):
         now = datetime.fromtimestamp(captured_at, timezone.utc)
